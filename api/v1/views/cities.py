@@ -1,63 +1,90 @@
 #!/usr/bin/python3
-"""
-Flask route that returns json status response
-"""
+""" Module defining city API request methods"""
+
+from flask import Flask, abort, request, jsonify
 from api.v1.views import app_views
-from flask import abort, jsonify, request
-from models import storage, CNC
-from flasgger.utils import swag_from
+from models.state import State
+from models.city import City
+from models import storage
 
 
-@app_views.route('/states/<state_id>/cities', methods=['GET', 'POST'])
-@swag_from('swagger_yaml/cities_by_state.yml', methods=['GET', 'POST'])
-def cities_per_state(state_id=None):
-    """
-        cities route to handle http method for requested cities by state
-    """
-    state_obj = storage.get('State', state_id)
-    if state_obj is None:
-        abort(404, 'Not found')
-
-    if request.method == 'GET':
-        all_cities = storage.all('City')
-        state_cities = [obj.to_json() for obj in all_cities.values()
-                        if obj.state_id == state_id]
-        return jsonify(state_cities)
-
-    if request.method == 'POST':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        if req_json.get("name") is None:
-            abort(400, 'Missing name')
-        City = CNC.get("City")
-        req_json['state_id'] = state_id
-        new_object = City(**req_json)
-        new_object.save()
-        return jsonify(new_object.to_json()), 201
+@app_views.route('/states/<string:state_id>/cities', methods=['GET'],
+                 strict_slashes=False)
+def get_state_cities(state_id):
+    """Route to fetch all cities for a particular state"""
+    state_obj = storage.get(State, state_id)
+    if not state_obj:
+        abort(404)
+    objects = storage.all(City)
+    state_cities = []
+    for city in objects.values():
+        if city.state_id == state_id:
+            state_cities.append(city.to_dict())
+    return jsonify(state_cities)
 
 
-@app_views.route('/cities/<city_id>', methods=['GET', 'DELETE', 'PUT'])
-@swag_from('swagger_yaml/cities_id.yml', methods=['GET', 'DELETE', 'PUT'])
-def cities_with_id(city_id=None):
-    """
-        cities route to handle http methods for given city
-    """
-    city_obj = storage.get('City', city_id)
-    if city_obj is None:
-        abort(404, 'Not found')
+@app_views.route('/cities/<string:city_id>', methods=['GET'],
+                 strict_slashes=False)
+def get_city(city_id):
+    """Route to fetch a specific city"""
+    cityObject = storage.get(City, city_id)
+    if cityObject is None:
+        abort(404)
+    return jsonify(cityObject.to_dict())
 
-    if request.method == 'GET':
-        return jsonify(city_obj.to_json())
 
-    if request.method == 'DELETE':
-        city_obj.delete()
-        del city_obj
-        return jsonify({}), 200
+@app_views.route('/states/<string:state_id>/cities', methods=['POST'],
+                 strict_slashes=False)
+def post_city(state_id):
+    """A route that creates a city"""
+    state_obj = storage.get(State, state_id)
+    if not state_obj:
+        abort(404)
+    req_body = None
+    try:
+        req_body = request.get_json()
+        if not req_body:
+            raise TypeError("Invalid")
+    except Exception:
+        abort(400, {'Not a JSON'})
+    if "name" not in req_body:
+        abort(400, {'Missing name'})
+    new_city_obj = City(name=req_body['name'], state_id=state_id)
+    storage.new(new_city_obj)
+    storage.save()
+    return jsonify(new_city_obj.to_dict()), 201
 
-    if request.method == 'PUT':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        city_obj.bm_update(req_json)
-        return jsonify(city_obj.to_json()), 200
+
+@app_views.route('/cities/<string:city_id>', methods=['PUT'],
+                 strict_slashes=False)
+def put_city(city_id):
+    """This route updates state as JSON response"""
+    req_body = None
+    try:
+        req_body = request.get_json()
+        if not req_body:
+            raise TypeError("Invalid")
+    except Exception:
+        abort(400, {'Not a JSON'})
+    cityObject = storage.get(City, city_id)
+    if cityObject is None:
+        abort(404)
+    ignoreKeys = ['id', 'created_at', 'state_id', 'updated_at']
+    ret_obj = {}
+    for key, val in req_body.items():
+        if key not in ignoreKeys:
+            setattr(cityObject, key, val)
+    storage.save()
+    return jsonify(cityObject.to_dict()), 200
+
+
+@app_views.route('/cities/<string:city_id>', methods=['DELETE'],
+                 strict_slashes=False)
+def delete_city(city_id):
+    """Route to delete a city"""
+    cityObject = storage.get(City, city_id)
+    if cityObject is None:
+        abort(404)
+    storage.delete(cityObject)
+    storage.save()
+    return jsonify({}), 200

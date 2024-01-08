@@ -1,57 +1,81 @@
 #!/usr/bin/python3
-"""
-    Flask route that returns json respone
-"""
+"""Module defining Amenities API endpoints"""
+
+from flask import Flask, abort, request, jsonify
 from api.v1.views import app_views
-from flask import abort, jsonify, request
-from models import storage, CNC
-from flasgger.utils import swag_from
+from models.amenity import Amenity
+from models import storage
 
 
-@app_views.route('/amenities/', methods=['GET', 'POST'])
-@swag_from('swagger_yaml/amenities_no_id.yml', methods=['GET', 'POST'])
-def amenities_no_id(amenity_id=None):
-    """
-        amenities route that handles http requests no ID given
-    """
-    if request.method == 'GET':
-        all_amenities = storage.all('Amenity')
-        all_amenities = [obj.to_json() for obj in all_amenities.values()]
-        return jsonify(all_amenities)
-
-    if request.method == 'POST':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        if req_json.get('name') is None:
-            abort(400, 'Missing name')
-        Amenity = CNC.get('Amenity')
-        new_object = Amenity(**req_json)
-        new_object.save()
-        return jsonify(new_object.to_json()), 201
+@app_views.route('/amenities', methods=['GET'], strict_slashes=False)
+def get_all_amenities():
+    """'/amenities route to display all amenities"""
+    objects = storage.all(Amenity)
+    amenities = []
+    for amenity in objects.values():
+        amenities.append(amenity.to_dict())
+    return jsonify(amenities)
 
 
-@app_views.route('/amenities/<amenity_id>', methods=['GET', 'DELETE', 'PUT'])
-@swag_from('swagger_yaml/amenities_id.yml', methods=['GET', 'DELETE', 'PUT'])
-def amenities_with_id(amenity_id=None):
-    """
-        amenities route that handles http requests with ID given
-    """
-    amenity_obj = storage.get('Amenity', amenity_id)
-    if amenity_obj is None:
-        abort(404, 'Not found')
+@app_views.route('/amenities/<string:amenity_id>', methods=['GET'],
+                 strict_slashes=False)
+def get_amenity_by_id(amenity_id):
+    """'/amenities/<amenity_id>' route to get Amenity by object id"""
+    amenityObject = storage.get(Amenity, amenity_id)
+    if amenityObject is None:
+        abort(404)
+    return jsonify(amenityObject.to_dict())
 
-    if request.method == 'GET':
-        return jsonify(amenity_obj.to_json())
 
-    if request.method == 'DELETE':
-        amenity_obj.delete()
-        del amenity_obj
-        return jsonify({}), 200
+@app_views.route('/amenities', methods=['POST'],
+                 strict_slashes=False)
+def post_amenities():
+    """A route that creates an amenity"""
+    req_body = None
+    try:
+        req_body = request.get_json()
+        if not req_body:
+            raise TypeError("Invalid")
+    except Exception:
+        abort(400, {'Not a JSON'})
+    if "name" not in req_body:
+        abort(400, {'Missing name'})
+    new_amenity_obj = Amenity(name=req_body['name'])
+    storage.new(new_amenity_obj)
+    storage.save()
+    return jsonify(new_amenity_obj.to_dict()), 201
 
-    if request.method == 'PUT':
-        req_json = request.get_json()
-        if req_json is None:
-            abort(400, 'Not a JSON')
-        amenity_obj.bm_update(req_json)
-        return jsonify(amenity_obj.to_json()), 200
+
+@app_views.route('/amenities/<amenity_id>', methods=['PUT'],
+                 strict_slashes=False)
+def put_amenity(amenity_id):
+    """This route updates amenity and returns a JSON response"""
+    req_body = None
+    try:
+        req_body = request.get_json()
+        if not req_body:
+            raise TypeError("Invalid")
+    except Exception:
+        abort(400, {'Not a JSON'})
+    amenityObject = storage.get(Amenity, amenity_id)
+    if amenityObject is None:
+        abort(404)
+    ignoreKeys = ['id', 'created_at', 'updated_at']
+    ret_obj = {}
+    for key, val in req_body.items():
+        if key not in ignoreKeys:
+            setattr(amenityObject, key, val)
+    storage.save()
+    return jsonify(amenityObject.to_dict()), 200
+
+
+@app_views.route('/amenities/<amenity_id>', methods=['DELETE'],
+                 strict_slashes=False)
+def delete_amenity(amenity_id):
+    """Route to delete an amenity"""
+    amenityObject = storage.get(Amenity, amenity_id)
+    if amenityObject is None:
+        abort(404)
+    storage.delete(amenityObject)
+    storage.save()
+    return jsonify({}), 200
