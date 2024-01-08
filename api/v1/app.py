@@ -1,42 +1,50 @@
 #!/usr/bin/python3
 """
-    This script starts a Flask web application
+    app.py to connect to API. app entry point
 """
-from os import getenv
-from flask import Flask, jsonify
-from flask_cors import CORS
+
+import os
 from models import storage
 from api.v1.views import app_views
+from flask import Flask
+from flask_cors import CORS, cross_origin
 from flasgger import Swagger
-from flasgger.utils import swag_from
-
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
+swagger = Swagger(app)
 app.register_blueprint(app_views)
-cors = CORS(app, resources={r"/api/v1/*": {"origins": "0.0.0.0"}})
+app.url_map.strict_slashes = False
+
+cors = CORS(app, resources={
+            r'/*': {'origins': os.getenv('HBNB_API_HOST', '0.0.0.0')}})
+app.register_blueprint(app_views)
 
 
 @app.teardown_appcontext
-def teardown(self):
-    """Removes the current SQLAlchemy Session"""
-    return storage.close()
+def teardown(code):
+    """
+    teardown_appcontext method that closes the storage
+    """
+    storage.close()
 
 
 @app.errorhandler(404)
-def error(e):
-    """Handler for 404 errors"""
-    return jsonify({"error": "Not found"}), 404
+def page_404_not_found(e):
+    """method for 404 errors.
+    """
+    return ({'error': 'Not found'}), 404
 
 
-#app.config['SWAGGER'] = {
-#    'title': 'AirBnB clone Restful API',
-#    'uiversion': 3
-#}
-
-#Swagger(app)
+def setup_global_errors():
+    """
+    This updates HTTPException Class with custom error function
+    """
+    for cls in HTTPException.__subclasses__():
+        app.register_error_handler(cls, global_error_handler)
 
 
 if __name__ == "__main__":
-    host = os.getenv('HBNB_API_HOST', default='0.0.0.0')
-    port = os.getenv('HBNB_API_PORT', default=5000)
-    app.run(host=host, port=port, threaded=True)
+    app.run(host=os.getenv('HBNB_API_HOST', '0.0.0.0'),
+            port=int(os.getenv('HBNB_API_PORT', '5000')),
+            threaded=True)
